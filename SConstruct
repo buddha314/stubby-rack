@@ -23,11 +23,13 @@ CORE_INCLUDES = [
     "thirdparty/choc",
     "thirdparty/signalsmith",
     "thirdparty/daisysp/Source",
+    "thirdparty/daisysp/Source/Utility",  # DaisySP's own sources include "dsp.h" bare
+    "thirdparty/daisysp/Source/Synthesis",
     "thirdparty/mutable",
 ]
 env.Append(CPPPATH=CORE_INCLUDES)
 
-core_sources = Glob("src/core/*.cpp")
+core_sources = Glob("src/core/*.cpp") + ["thirdparty/daisysp/Source/Synthesis/oscillator.cpp"]
 sources = core_sources + Glob("src/godot/*.cpp")
 
 library = env.SharedLibrary(
@@ -44,3 +46,9 @@ test_bin = test_env.Program("build/tests/stubby_rack_tests", test_objs + core_ob
 run_tests = test_env.Command("build/tests/.passed", test_bin, "$SOURCE && touch $TARGET")
 AlwaysBuild(run_tests)
 Alias("tests", run_tests)
+
+# Spike benchmarks (no Godot): scons bench
+bench_env = test_env.Clone(CXXFLAGS=["-std=c++17", "-O3", "-march=native", "-Wall"])
+bench_core = [bench_env.Object("build/bench/core_" + os.path.splitext(os.path.basename(str(s)))[0], s) for s in core_sources]
+bench_bin = bench_env.Program("build/bench/spike_rack_bench", [bench_env.Object("build/bench/spike_rack_bench.o", "bench/spike_rack_bench.cpp")] + bench_core)
+Alias("bench", bench_bin)

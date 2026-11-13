@@ -6,6 +6,7 @@
 #include <godot_cpp/godot.hpp>
 
 #include "rack_server.h"
+#include "rack_streams.h"
 
 using namespace godot;
 
@@ -14,6 +15,10 @@ static RackServer *rack_server = nullptr;
 static void initialize_stubby_rack(ModuleInitializationLevel p_level) {
     if (p_level != MODULE_INITIALIZATION_LEVEL_SCENE) return;
     GDREGISTER_CLASS(RackServer);
+    GDREGISTER_CLASS(RackDriverStream);
+    GDREGISTER_CLASS(RackDriverPlayback);
+    GDREGISTER_CLASS(RackStemStream);
+    GDREGISTER_CLASS(RackStemPlayback);
     rack_server = memnew(RackServer);
     Engine::get_singleton()->register_singleton("RackServer", rack_server);
 }
