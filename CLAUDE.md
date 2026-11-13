@@ -34,6 +34,7 @@ scons -j16                 # extension → demo/addons/stubby_rack/bin/
 scons tests                # core tests (doctest), no Godot
 python3 tools/check_licences.py
 godot --headless --path demo -s res://smoke_test.gd
+godot --headless --path demo -s res://test_rack_classes.gd
 ```
 
 The first clean `--import` of `demo/` aborts with exit 134. That's a Godot 4.8 beta

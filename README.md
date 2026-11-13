@@ -7,41 +7,39 @@ inside Godot's own audio mix, as a C++ GDExtension built on godot-cpp. It also o
 the game's **master clock**: one sample counter and transport that time every sound in
 the game.
 
-**Status:** engine core started (task group 3): the per-sample rack, polyphony-ready
-cables, the lock-free command/event boundary and an allocation guard. A 200-module
-patch renders a 512-frame block in about 0.6 ms (5.6%). Earlier, the hosting spike
-(task group 1) was done. The extension loads in
-Godot 4.8. A driver player and per-emitter stem players fan one rendered block out to
-`AudioStreamPlayer3D`s, sample-aligned. A port of stubby-music's 200-module feedback
-rack renders inside `_mix` within budget. Results are in the spec's design.md
-("Spike results"). The engine itself (scheduler, clock, modules) is next.
+**Status:** the engine core (group 3), the master clock (group 4) and the Godot
+classes (group 5) are done. A 200-module patch renders a 512-frame block in about
+0.6 ms (5.6%). The hosting spike's results are in the spec's design.md ("Spike
+results"); its tools are in git history (before the `godot-classes` branch). Next:
+the module library (group 6).
+
+## Using it from Godot
+
+| Class | What it is |
+| --- | --- |
+| `RackServer` (engine singleton) | Owns the engine. Modules by kind (`add_module(id, kind)`), cables, params, stems; `schedule(when, value)` makes the following commands land on a sample (`WHEN_SAMPLE`), the next beat, bar or beat division; `set_tempo`, `set_meter`, `set_paused`; time reads `now_sample()`, `get_position()`, `sample_to_ticks_usec()`; one-shots `load_sample(stream)` + `play_sample(id, when, value)` on the UI stem's sampler. Signals: `clock_ticked(module_id, sample, index)`, `action_late(action, samples_missed, sample)`, `command_rejected(module_id, reason)`. Reads `audio/master_clock/tempo_bpm`, `beats_per_bar` and `audio/driver/mix_rate` at start. |
+| `RackModuleDefinition` (Resource) | A module kind: ports, params (name, min, max, default, unit), lights, panel, DSP source. `from_kind(kind)` fills one from the core; `check_against_core()` lists disagreements. |
+| `RackPatch` (Resource) | Modules (`place`, `kind` or `definition`, `params`, `seed`), cables (`from`, `output`, `to`, `input`; by index or name), emitters (`module`, `output`, `position`, `max_distance`). `to_dictionary()` / `from_dictionary()` for save games. |
+| `Rack` (Node3D) | Instantiates a patch while in the tree. `connect_cable`, `disconnect_cable`, `set_param`/`get_param` by place name; `to_patch()` captures the live state. |
+| `RackEmitter` (AudioStreamPlayer3D) | Plays one module output from where it stands; binds to its nearest `Rack` ancestor. Doppler off, `process_mode = ALWAYS`. |
+
+Schedules last until `schedule(WHEN_NOW)` or the end of the frame. Commands are
+committed once per frame by an internal `RackDriver` node that `RackServer` adds to the
+scene root on first use (late in the frame, `process_mode = ALWAYS`).
 
 ## Hosting: how the rack reaches Godot's mix
 
 Godot calls every playing stream's `_mix` once per 512-frame step on its audio thread,
 in an order we don't control, and gives extensions no step counter. So:
-- **`RackDriverStream`** plays on an always-on, silent `AudioStreamPlayer` with
-  `process_mode = ALWAYS`, so the rack and its clock run even when nothing is audible
-  or the game is paused (a `PAUSABLE` driver stops the clock).
-- **`RackStemStream`** plays one emitter's stem on an `AudioStreamPlayer3D`. It isn't
-  resampled, so doppler and `pitch_scale` don't apply.
-- **`StemRenderer`** (`src/core`) detects mix steps itself. A new step begins when the
-  gap since the end of the previous read exceeds a quarter block, or when a reader that
-  already read in this step reads again (PulseAudio asks for two steps back to back).
-  The first read of a step renders the block, and every read in the step gets that
-  same block, so all emitters stay sample-aligned. Its sample frontier is the master
-  clock.
-
-Spike tools (`demo/spike_*.gd`, `tools/spike_sync.py`, `scons bench`):
-
-```bash
-godot --path demo -s res://spike_fanout.gd -- --emitters=48 --seconds=60 --volume-db=-60 [--rack=200]
-godot --path demo -s res://spike_clock.gd -- --mode=sync --seconds=60 --out=/tmp/sync.json
-python3 tools/spike_sync.py /tmp/sync.json
-godot --path demo -s res://spike_clock.gd -- --mode=pause
-godot --path demo -s res://spike_reload.gd
-scons bench && ./build/bench/spike_rack_bench
-```
+- **`RackDriverStream`** plays on the driver node's always-on, silent player, so the
+  rack and its clock run even when nothing is audible or the game is paused.
+- **`RackStemStream`** plays one emitter's stem. It isn't resampled, so doppler and
+  `pitch_scale` don't apply.
+- **`EngineDriver`** (`src/core/driver.h`) detects mix steps itself. A new step begins
+  when the gap since the end of the previous read exceeds a quarter block, or when a
+  reader that already read in this step reads again (PulseAudio asks for two steps
+  back to back). The first read of a step renders one engine block, and every read in
+  the step copies that block, so all emitters stay sample-aligned.
 
 Use a window (not `--headless`) for timing: headless Godot uses the Dummy audio
 driver, which doesn't keep real-time pace.
@@ -76,6 +74,8 @@ driver, which doesn't keep real-time pace.
     tick is an event carrying its exact sample.
   - `set_paused` fades the emitter stems out over 30 ms; the clock and the UI stem (the
     last stem) run on. `position()` and `predict_ns()` (the sync point) are lock-free reads.
+- **`registry.h`**: every module kind by name, with its ports and params; `make_module(kind)`.
+- **`modules/sampler.h`** + **`sample_bank.h`**: an 8-voice one-shot sampler; triggers land on their exact sample.
 - **`modules/basic.h`**: first versions of Clock, Envelope, VCO (DaisySP), VCA, Mix4,
   Constant and Thru.
 - **`patches.h`**: the 200-module reference patch (stubby-music's `spike_rack`).
@@ -119,6 +119,7 @@ STUBBY_API=4.7 scons -j$(nproc)        # build against godot-cpp's bundled 4.7 A
 scons tests                            # core tests, no Godot needed
 python3 tools/check_licences.py        # no copyleft in thirdparty/
 godot --headless --path demo -s res://smoke_test.gd   # extension loads; prints SMOKE PASS
+godot --headless --path demo -s res://test_rack_classes.gd   # the Godot classes end to end
 ```
 
 Refresh the API dump after updating Godot:

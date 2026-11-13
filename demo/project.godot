@@ -10,3 +10,8 @@ config/features=PackedStringArray("4.8")
 [audio]
 
 driver/mix_rate=48000
+
+; Read by RackServer at start (the game ships 1.0 and 4). The demo's meter is 3, so
+; test_rack_classes.gd can tell the setting was read rather than defaulted.
+master_clock/tempo_bpm=1.0
+master_clock/beats_per_bar=3
