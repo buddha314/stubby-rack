@@ -11,7 +11,8 @@
 // stands. It binds to its nearest Rack ancestor on entering the tree: takes a free
 // stem, points it at `module`/`output`, and plays a RackStemStream. Doppler is off
 // (the stem isn't resampled) and process_mode is ALWAYS (pause mutes in the core).
-// A patch's `emitters` entries become RackEmitter children at runtime.
+// A patch's `emitters` entries become RackEmitter children at runtime. An emitter
+// whose module isn't there yet binds when Rack.add_module adds it.
 
 #include <godot_cpp/classes/audio_stream_player3d.hpp>
 #include <godot_cpp/classes/node3d.hpp>
@@ -36,6 +37,12 @@ public:
     void _exit_tree() override;
 
     bool is_instantiated() const { return instantiated; }
+    /// Adds a module at `place` while the rack runs (a machine mounting one), with
+    /// `params` {name or index: value}. Emitters waiting for that place bind to it.
+    bool add_module(const String &place, const String &kind, const Dictionary &params = Dictionary(), int64_t seed = 1);
+    /// Removes the module at `place`, its cables and its emitters' stems.
+    bool remove_module(const String &place);
+    bool has_module(const String &place) const { return places.count(place) != 0; }
     int64_t get_module_id(const String &place) const;
     bool connect_cable(const String &from, const Variant &output, const String &to, const Variant &input);
     bool disconnect_cable(const String &to, const Variant &input);
@@ -63,6 +70,8 @@ private:
     int param_of(const Place &p, const Variant &v) const;
     void instantiate();
     void release();
+    bool add_place(const String &place, const Dictionary &entry);
+    void bind_emitters(Node *under, const String &place, bool bind);
 
     Ref<RackPatch> patch;
     bool instantiated = false;
@@ -80,6 +89,7 @@ public:
     Variant get_output() const { return output; }
     void set_output(const Variant &v) { output = v; }
     int get_stem() const { return stem; }
+    bool is_bound() const { return stem >= 0; }
 
     void _enter_tree() override;
     void _exit_tree() override;

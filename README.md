@@ -20,7 +20,7 @@ the module library (group 6).
 | `RackServer` (engine singleton) | Owns the engine. Modules by kind (`add_module(id, kind)`), cables, params, stems; `schedule(when, value)` makes the following commands land on a sample (`WHEN_SAMPLE`), the next beat, bar or beat division; `set_tempo`, `set_meter`, `set_paused`; time reads `now_sample()`, `get_position()`, `sample_to_ticks_usec()`; one-shots `load_sample(stream)` + `play_sample(id, when, value)` on the UI stem's sampler. Signals: `clock_ticked(module_id, sample, index)`, `action_late(action, samples_missed, sample)`, `command_rejected(module_id, reason)`. Reads `audio/master_clock/tempo_bpm`, `beats_per_bar` and `audio/driver/mix_rate` at start. |
 | `RackModuleDefinition` (Resource) | A module kind: ports, params (name, min, max, default, unit), lights, panel, DSP source. `from_kind(kind)` fills one from the core; `check_against_core()` lists disagreements. |
 | `RackPatch` (Resource) | Modules (`place`, `kind` or `definition`, `params`, `seed`), cables (`from`, `output`, `to`, `input`; by index or name), emitters (`module`, `output`, `position`, `max_distance`). `to_dictionary()` / `from_dictionary()` for save games. |
-| `Rack` (Node3D) | Instantiates a patch while in the tree. `connect_cable`, `disconnect_cable`, `set_param`/`get_param` by place name; `to_patch()` captures the live state. |
+| `Rack` (Node3D) | Instantiates a patch while in the tree (or starts empty). `add_module`/`remove_module` by place at run time (a machine mounting one); `connect_cable`, `disconnect_cable`, `set_param`/`get_param` by place name; `to_patch()` captures the live state. |
 | `RackEmitter` (AudioStreamPlayer3D) | Plays one module output from where it stands; binds to its nearest `Rack` ancestor. Doppler off, `process_mode = ALWAYS`. |
 
 Schedules last until `schedule(WHEN_NOW)` or the end of the frame. Commands are
@@ -78,7 +78,7 @@ driver, which doesn't keep real-time pace.
     last stem) run on. `position()` and `predict_ns()` (the sync point) are lock-free reads.
 - **`registry.h`**: every module kind by name, with its ports and params; `make_module(kind)`.
 - **`modules/sampler.h`** + **`sample_bank.h`**: an 8-voice one-shot sampler; triggers land on their exact sample.
-- **`modules/basic.h`**: first versions of Clock, Envelope, VCO (DaisySP), VCA, Mix4,
+- **`modules/basic.h`**: first versions of Clock, Envelope, VCO (DaisySP), VCA, GateVca (the burbler's volume), Mix4,
   Constant and Thru.
 - **`patches.h`**: the 200-module reference patch (stubby-music's `spike_rack`).
 - **Tests:** the spec's scenarios, and an allocation guard (operator new is replaced

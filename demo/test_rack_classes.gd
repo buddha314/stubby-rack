@@ -114,6 +114,23 @@ func _run() -> void:
 	_expect(twin.is_instantiated() and is_equal_approx(twin.get_param("osc", "freq"), 220.0), "a twin rack has the edited value")
 	twin.queue_free()
 
+	# A machine's rack filled at run time: an emitter waits, then binds when its module arrives.
+	var machine := Rack.new()
+	var waiting := RackEmitter.new()
+	waiting.module = "vca"
+	machine.add_child(waiting)
+	root.add_child(machine)
+	await process_frame
+	_expect(machine.is_instantiated() and not waiting.is_bound(), "an emitter waits for its module")
+	machine.add_module("clock", "tempo_clock", {"multiple": 4})
+	machine.add_module("vca", "gate_vca", {"gain": 0.5})
+	_expect(waiting.is_bound(), "the emitter binds when its module is added")
+	_expect(machine.connect_cable("clock", "gate", "vca", "trig"), "cable by port names")
+	_expect(machine.remove_module("vca") and not waiting.is_bound() and not machine.has_module("vca"),
+			"removing the module unbinds its emitter")
+	_expect(machine.to_patch().cables.is_empty(), "its cables go with it")
+	machine.queue_free()
+
 	# Bad commands come back as signals.
 	server.add_module(server.new_module_id(), "no_such_kind")
 	_expect(_rejected.size() == 1, "an unknown kind is rejected with a reason: %s" % [_rejected])

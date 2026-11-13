@@ -2,6 +2,7 @@
 // The master clock's clock modules (spec master-clock "Tempo clocks are whole
 // multiples of the master", synth-modules "Clock module").
 
+#include <cmath>
 #include <cstdint>
 
 #include "core/module.h"
@@ -13,11 +14,12 @@ namespace stubby::modules {
 /// is at master beats k/N, computed exactly from the transport, so clocks never drift
 /// and all of them tick together on every master beat. Changing N (or the tempo, or
 /// the sample rate) takes effect from the current position: the next tick is the next
-/// k/N boundary. Out 0: gate, 10 V for the first half of each tick period. Every tick
+/// k/N boundary. Out 0: gate, 10 V for the first half of each tick period. Out 1:
+/// phase, a 0-10 V ramp across each tick period (from the master position). Every tick
 /// is reported as an event with its exact sample. Silent while the transport is stopped.
 class TempoClock : public Module {
 public:
-    explicit TempoClock(int multiple = 1) : Module(0, 1, 1) { set_param(0, static_cast<float>(multiple)); }
+    explicit TempoClock(int multiple = 1) : Module(0, 2, 1) { set_param(0, static_cast<float>(multiple)); }
     void process(const ProcessArgs &args, const PolyVoltage *const *, PolyVoltage *out) override {
         const Transport &t = *args.transport;
         const int n = param(0) >= 1.0f ? static_cast<int>(param(0)) : 1;
@@ -38,6 +40,12 @@ public:
         }
         const bool high = t.running() && last_ != Transport::kNever && args.frame < last_ + half_;
         out[0].set_mono(high ? volts::kGateHigh : 0.0f);
+        if (t.running()) {
+            const double ticks = t.beats_at(args.frame) * n;
+            out[1].set_mono(static_cast<float>((ticks - std::floor(ticks)) * volts::kGateHigh));
+        } else {
+            out[1].set_mono(0.0f);
+        }
     }
 private:
     int multiple_ = 0;

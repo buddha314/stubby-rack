@@ -173,3 +173,42 @@ TEST_CASE("Sampler: a scheduled trigger starts its sample on the exact sample, r
     CHECK(e.stem(e.ui_stem())[1000 + 470 - 1024] == doctest::Approx(2.5f));
     CHECK(e.stem(e.ui_stem())[1000 + 485 - 1024] == 0.0f);
 }
+
+TEST_CASE("Gate VCA: opens on the trig gate with a 2 ms ramp, scaled by gain") {
+    BuildContext c;
+    Engine e(EngineConfig{});
+    e.add_module(1, make_module("constant", c));  // the signal: 4 V
+    e.set_param(1, 0, 4.0f);
+    e.add_module(2, make_module("constant", c));  // the gate
+    e.add_module(3, make_module("gate_vca", c));
+    e.set_param(3, 0, 0.5f);
+    e.connect(2, 0, 3, 0);
+    e.connect(1, 0, 3, 1);
+    e.set_stem(0, 3, 0);
+    e.commit();
+    e.render(256);
+    CHECK(e.stem(0)[255] == 0.0f);  // closed
+    e.set_param(2, 0, 10.0f);
+    e.commit();
+    e.render(256);
+    // 2 ms = 96 samples to open; then in × gain = 2 V. No step bigger than a ramp step.
+    float prev = 0.0f, worst = 0.0f;
+    for (int i = 0; i < 256; ++i) { worst = std::fmax(worst, e.stem(0)[i] - prev); prev = e.stem(0)[i]; }
+    CHECK(e.stem(0)[200] == doctest::Approx(2.0f));
+    CHECK(worst <= 2.0f / 96.0f + 1e-4f);
+}
+
+TEST_CASE("Tempo clock phase output ramps 0-10 V across each tick") {
+    EngineConfig cfg;
+    cfg.tempo_bpm = 120.0;
+    Engine e(cfg);
+    BuildContext c;
+    e.add_module(1, make_module("tempo_clock", c));
+    e.set_stem(0, 1, 1);
+    e.commit();
+    e.render(4096);
+    e.render(4096);
+    e.render(4096);  // frames 8192..12287: a tick is 24,000 samples
+    CHECK(e.stem(0)[0] == doctest::Approx(10.0 * 8192.0 / 24000.0).epsilon(0.001));
+    CHECK(e.stem(0)[3808] == doctest::Approx(10.0 * 12000.0 / 24000.0).epsilon(0.001));
+}
