@@ -58,6 +58,9 @@ func _run() -> void:
 	_expect(rack.is_instantiated(), "the rack instantiated its patch")
 	_expect(emitter != null and emitter.get_stem() >= 0, "the patch's emitter bound a stem")
 	_expect(root.get_node_or_null("RackDriver") != null, "RackServer added its driver to the tree")
+	var ui_player := root.get_node_or_null("RackDriver/UiPlayer") as AudioStreamPlayer
+	_expect(ui_player != null and ui_player.playing and (ui_player.stream as RackStemStream).stem == server.get_ui_stem(),
+			"the driver plays the UI stem")
 	_expect(emitter != null and emitter.doppler_tracking == AudioStreamPlayer3D.DOPPLER_TRACKING_DISABLED
 			and emitter.process_mode == Node.PROCESS_MODE_ALWAYS, "emitter: doppler off, process always")
 

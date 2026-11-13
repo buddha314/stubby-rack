@@ -25,7 +25,9 @@ the module library (group 6).
 
 Schedules last until `schedule(WHEN_NOW)` or the end of the frame. Commands are
 committed once per frame by an internal `RackDriver` node that `RackServer` adds to the
-scene root on first use (late in the frame, `process_mode = ALWAYS`).
+scene root on first use (late in the frame, `process_mode = ALWAYS`). It also plays the
+UI stem on a non-spatial player, on the bus named by `audio/stubby_rack/ui_bus`
+(default Master).
 
 ## Hosting: how the rack reaches Godot's mix
 
