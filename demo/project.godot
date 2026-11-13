@@ -1,0 +1,12 @@
+; A minimal project for loading and testing the extension.
+
+config_version=5
+
+[application]
+
+config/name="stubby-rack demo"
+config/features=PackedStringArray("4.8")
+
+[audio]
+
+driver/mix_rate=48000

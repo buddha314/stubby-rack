@@ -1,0 +1,19 @@
+# SCons
+.sconsign*.dblite
+build/
+*.o
+*.os
+*.obj
+
+# Build outputs
+demo/addons/stubby_rack/bin/
+*.so
+*.dll
+*.dylib
+*.a
+*.lib
+
+# Godot
+.godot/
+*.uid
+*.import
