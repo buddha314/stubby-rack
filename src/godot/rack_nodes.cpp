@@ -45,48 +45,98 @@ void Rack::_exit_tree() { release(); }
 
 void Rack::instantiate() {
     RackServer *server = RackServer::get_singleton();
-    if (instantiated || !server || patch.is_null()) return;
-    instantiated = true;
+    if (instantiated || !server) return;
+    instantiated = true;  // an empty rack (no patch) is filled with add_module
+    if (patch.is_null()) return;
     const Array mods = patch->get_modules();
     for (int64_t i = 0; i < mods.size(); ++i) {
         const Dictionary m = mods[i];
-        Place p;
-        p.source = m;
-        p.definition = m.get("definition", Variant());
-        p.kind = p.definition.is_valid() ? p.definition->get_kind() : String(m.get("kind", ""));
-        const stubby::KindInfo *k = stubby::find_kind(p.kind.utf8().get_data());
-        const String place = m.get("place", String("module") + String::num_int64(i));
-        if (!k) {
-            UtilityFunctions::push_error("Rack: unknown module kind '", p.kind, "' at ", place);
-            continue;
-        }
-        p.inputs = strings(k->inputs);
-        p.outputs = strings(k->outputs);
-        for (const auto &pi : k->params) p.param_names.append(String(pi.name.c_str()));
-        p.id = server->new_module_id();
-        if (!server->add_module(p.id, p.kind, m.get("seed", 1))) continue;
-        // Definition defaults first (they may differ from the core's), then the patch's values.
-        if (p.definition.is_valid()) {
-            const Array dp = p.definition->get_params();
-            for (int64_t j = 0; j < dp.size() && j < p.param_names.size(); ++j) {
-                const Dictionary d = dp[j];
-                if (d.has("default")) p.params[static_cast<int>(j)] = d["default"];
-            }
-        }
-        const Dictionary values = m.get("params", Dictionary());
-        const Array keys = values.keys();
-        for (int64_t j = 0; j < keys.size(); ++j) {
-            const int idx = param_of(p, keys[j]);
-            if (idx >= 0) p.params[idx] = values[keys[j]];
-            else UtilityFunctions::push_error("Rack: no param '", keys[j], "' on ", place);
-        }
-        for (const auto &kv : p.params) server->set_param(p.id, kv.first, kv.second);
-        places[place] = p;
+        add_place(m.get("place", String("module") + String::num_int64(i)), m);
     }
     const Array list = patch->get_cables();
     for (int64_t i = 0; i < list.size(); ++i) {
         const Dictionary c = list[i];
         connect_cable(c.get("from", ""), c.get("output", 0), c.get("to", ""), c.get("input", 0));
+    }
+}
+
+bool Rack::add_place(const String &place, const Dictionary &m) {
+    RackServer *server = RackServer::get_singleton();
+    if (!server || places.count(place)) {
+        if (server) UtilityFunctions::push_error("Rack: place '", place, "' is already filled");
+        return false;
+    }
+    Place p;
+    p.source = m;
+    p.definition = m.get("definition", Variant());
+    p.kind = p.definition.is_valid() ? p.definition->get_kind() : String(m.get("kind", ""));
+    const stubby::KindInfo *k = stubby::find_kind(p.kind.utf8().get_data());
+    if (!k) {
+        UtilityFunctions::push_error("Rack: unknown module kind '", p.kind, "' at ", place);
+        return false;
+    }
+    p.inputs = strings(k->inputs);
+    p.outputs = strings(k->outputs);
+    for (const auto &pi : k->params) p.param_names.append(String(pi.name.c_str()));
+    p.id = server->new_module_id();
+    if (!server->add_module(p.id, p.kind, m.get("seed", 1))) return false;
+    // Definition defaults first (they may differ from the core's), then the given values.
+    if (p.definition.is_valid()) {
+        const Array dp = p.definition->get_params();
+        for (int64_t j = 0; j < dp.size() && j < p.param_names.size(); ++j) {
+            const Dictionary d = dp[j];
+            if (d.has("default")) p.params[static_cast<int>(j)] = d["default"];
+        }
+    }
+    const Dictionary values = m.get("params", Dictionary());
+    const Array keys = values.keys();
+    for (int64_t j = 0; j < keys.size(); ++j) {
+        const int idx = param_of(p, keys[j]);
+        if (idx >= 0) p.params[idx] = values[keys[j]];
+        else UtilityFunctions::push_error("Rack: no param '", keys[j], "' on ", place);
+    }
+    for (const auto &kv : p.params) server->set_param(p.id, kv.first, kv.second);
+    places[place] = p;
+    return true;
+}
+
+bool Rack::add_module(const String &place, const String &kind, const Dictionary &params, int64_t seed) {
+    if (!instantiated) instantiate();
+    Dictionary m;
+    m["place"] = place;
+    m["kind"] = kind;
+    m["params"] = params;
+    m["seed"] = seed;
+    if (!add_place(place, m)) return false;
+    bind_emitters(this, place, true);
+    return true;
+}
+
+bool Rack::remove_module(const String &place) {
+    RackServer *server = RackServer::get_singleton();
+    auto it = places.find(place);
+    if (!server || it == places.end()) return false;
+    bind_emitters(this, place, false);
+    for (int64_t i = cables.size() - 1; i >= 0; --i) {
+        const Dictionary c = cables[i];
+        if (String(c["to"]) == place || String(c["from"]) == place) cables.remove_at(i);
+    }
+    server->remove_module(it->second.id);  // the engine unplugs its cables
+    places.erase(it);
+    return true;
+}
+
+void Rack::bind_emitters(Node *under, const String &place, bool bind) {
+    for (int i = 0; i < under->get_child_count(); ++i) {
+        Node *child = under->get_child(i);
+        if (Object::cast_to<Rack>(child)) continue;  // a nested rack binds its own
+        if (RackEmitter *e = Object::cast_to<RackEmitter>(child)) {
+            if (e->get_module() == place) {
+                if (bind) e->bind(this);
+                else e->unbind();
+            }
+        }
+        bind_emitters(child, place, bind);
     }
 }
 
@@ -226,6 +276,9 @@ void Rack::_bind_methods() {
     ClassDB::bind_method(D_METHOD("get_patch"), &Rack::get_patch);
     ClassDB::bind_method(D_METHOD("set_patch", "patch"), &Rack::set_patch);
     ClassDB::bind_method(D_METHOD("is_instantiated"), &Rack::is_instantiated);
+    ClassDB::bind_method(D_METHOD("add_module", "place", "kind", "params", "seed"), &Rack::add_module, DEFVAL(Dictionary()), DEFVAL(1));
+    ClassDB::bind_method(D_METHOD("remove_module", "place"), &Rack::remove_module);
+    ClassDB::bind_method(D_METHOD("has_module", "place"), &Rack::has_module);
     ClassDB::bind_method(D_METHOD("get_module_id", "place"), &Rack::get_module_id);
     ClassDB::bind_method(D_METHOD("connect_cable", "from", "output", "to", "input"), &Rack::connect_cable);
     ClassDB::bind_method(D_METHOD("disconnect_cable", "to", "input"), &Rack::disconnect_cable);
@@ -257,8 +310,9 @@ bool RackEmitter::bind(Rack *rack) {
     RackServer *server = RackServer::get_singleton();
     if (!server || !rack || stem >= 0) return false;
     const int64_t id = rack->get_module_id(module);
+    if (id == 0) return false;  // not added yet: Rack.add_module binds it
     const int out = rack->output_index(module, output);
-    if (id == 0 || out < 0) {
+    if (out < 0) {
         UtilityFunctions::push_error("RackEmitter: no output ", output, " on '", module, "'");
         return false;
     }
@@ -279,6 +333,7 @@ bool RackEmitter::bind(Rack *rack) {
 void RackEmitter::unbind() {
     if (stem < 0) return;
     stop();
+    set_stream(Ref<AudioStream>());  // a deferred play() from bind() must not restart the old stem
     if (RackServer *server = RackServer::get_singleton()) server->release_stem(stem);
     stem = -1;
 }
@@ -289,6 +344,7 @@ void RackEmitter::_bind_methods() {
     ClassDB::bind_method(D_METHOD("get_output"), &RackEmitter::get_output);
     ClassDB::bind_method(D_METHOD("set_output", "output"), &RackEmitter::set_output);
     ClassDB::bind_method(D_METHOD("get_stem"), &RackEmitter::get_stem);
+    ClassDB::bind_method(D_METHOD("is_bound"), &RackEmitter::is_bound);
     ADD_PROPERTY(PropertyInfo(Variant::STRING, "module"), "set_module", "get_module");
     ADD_PROPERTY(PropertyInfo(Variant::NIL, "output", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_NIL_IS_VARIANT), "set_output", "get_output");
 }

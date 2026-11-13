@@ -89,6 +89,24 @@ public:
     }
 };
 
+/// A VCA opened by a gate (the burbler's "volume"): out = in × gain while the trig input
+/// is high (Schmitt 0.1/1.0 V), closed otherwise, with a 2 ms ramp so edges don't click.
+/// In: trig, in. Param 0: gain (0..1).
+class GateVca : public Module {
+public:
+    GateVca() : Module(2, 1, 1) { set_param(0, 1.0f); }
+    void process(const ProcessArgs &args, const PolyVoltage *const *in, PolyVoltage *out) override {
+        const float g = in[0]->mono();
+        if (open_ ? g <= volts::kSchmittLow : g >= volts::kSchmittHigh) open_ = !open_;
+        const float step = 1.0f / (0.002f * args.sample_rate);
+        level_ = open_ ? (level_ + step < 1.0f ? level_ + step : 1.0f) : (level_ - step > 0.0f ? level_ - step : 0.0f);
+        out[0].set_mono(volts::sanitize(in[1]->mono() * param(0) * level_));
+    }
+private:
+    bool open_ = false;
+    float level_ = 0.0f;
+};
+
 /// Average of four inputs.
 class Mix4 : public Module {
 public:

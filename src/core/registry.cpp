@@ -14,7 +14,7 @@ std::vector<KindInfo> build_kinds() {
     std::vector<KindInfo> k;
     k.push_back({"constant", {}, {"out"}, {{"volts", -10.0f, 10.0f, 0.0f, "V"}}});
     k.push_back({"thru", {"in"}, {"out"}, {}});
-    k.push_back({"tempo_clock", {}, {"gate"}, {{"multiple", 1.0f, 960.0f, 1.0f, "x"}}});
+    k.push_back({"tempo_clock", {}, {"gate", "phase"}, {{"multiple", 1.0f, 960.0f, 1.0f, "x"}}});
     k.push_back({"random_clock", {}, {"trigger"},
                  {{"min_seconds", 0.001f, 600.0f, 2.0f, "s"}, {"max_seconds", 0.001f, 600.0f, 8.0f, "s"}}});
     k.push_back({"free_clock", {}, {"gate"}, {{"bpm", 1.0f, 960.0f, 120.0f, "BPM"}}});
@@ -23,6 +23,7 @@ std::vector<KindInfo> build_kinds() {
     for (const char *wave : {"vco_sine", "vco_triangle", "vco_saw", "vco_square"})
         k.push_back({wave, {"voct", "fm"}, {"out"}, {freq, fm}});
     k.push_back({"vca", {"in", "cv"}, {"out"}, {}});
+    k.push_back({"gate_vca", {"trig", "in"}, {"out"}, {{"gain", 0.0f, 1.0f, 1.0f, ""}}});
     k.push_back({"mix4", {"in1", "in2", "in3", "in4"}, {"out"}, {}});
     KindInfo sampler{"sampler", {}, {"out"}, {}};
     for (int v = 0; v < modules::SamplerPool::kVoices; ++v) {
@@ -49,6 +50,7 @@ std::unique_ptr<Module> build(const std::string &kind, const BuildContext &c) {
     if (kind == "vco_saw") return std::make_unique<Vco>(c.sample_rate, Oscillator::WAVE_POLYBLEP_SAW);
     if (kind == "vco_square") return std::make_unique<Vco>(c.sample_rate, Oscillator::WAVE_POLYBLEP_SQUARE);
     if (kind == "vca") return std::make_unique<Vca>();
+    if (kind == "gate_vca") return std::make_unique<GateVca>();
     if (kind == "mix4") return std::make_unique<Mix4>();
     if (kind == "sampler") return std::make_unique<SamplerPool>(c.bank);
     return nullptr;
