@@ -42,9 +42,14 @@ public:
         if (stem >= stem_high_) stem_high_ = stem + 1;
     }
 
-    /// Audio thread: render `frames` samples starting at master frame `first_frame`
-    /// into the stem buffers (volts, mono: channel 0).
-    void render(int frames, uint64_t first_frame, float sample_rate);
+    /// Audio thread: render `frames` samples starting at master frame `first_frame`,
+    /// writing stems from index `stem_offset` (a block may be split at scheduled
+    /// actions). `args` supplies the sample rate, transport and event sink.
+    void render(int frames, uint64_t first_frame, const ProcessArgs &args, int stem_offset = 0);
+    /// Scale emitter stems [0, emitters) from `offset` for `frames` by a per-sample gain
+    /// ramp starting at `gain` and stepping by `step` toward `target`. Returns the gain.
+    float apply_gain(int emitters, int offset, int frames, float gain, float target, float step);
+    int stems_used() const { return stem_high_; }
 
     /// Stem `s`'s samples for the last render (frames long).
     const float *stem(int s) const { return &stems_[static_cast<size_t>(s) * cap_.max_block]; }

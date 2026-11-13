@@ -61,12 +61,27 @@ driver, which doesn't keep real-time pace.
     land on one sample, then renders and advances the master sample counter.
   - Removed modules come back through a return FIFO and are deleted on the main thread
     (`collect()`).
+- **Master clock** (`transport.h`, `modules/clocks.h`, `sync.h`): the sample counter is
+  the time base.
+  - `Transport` holds tempo (1 BPM by default), meter and running state. Position is
+    piecewise linear in samples: a tempo, start/stop or sample-rate change re-anchors at
+    the current sample, so position never jumps and a device change keeps the bar.
+  - `Engine::at(When)` schedules the commands that follow on an exact sample, or on the
+    next beat, bar or beat division. Quantized times are kept in beats, so tempo and rate
+    changes keep them on their beat. Render splits the block at each action. An action
+    whose time has already passed applies at the block start with a `Late` event.
+  - `TempoClock(N)` ticks at whole multiples of the master. Tick k is computed exactly
+    from the anchor (never accumulated), so ×90 and ×120 at 1 BPM still meet on every
+    master beat after an hour. `RandomClock` is the seeded, free-running bug clock. Each
+    tick is an event carrying its exact sample.
+  - `set_paused` fades the emitter stems out over 30 ms; the clock and the UI stem (the
+    last stem) run on. `position()` and `predict_ns()` (the sync point) are lock-free reads.
 - **`modules/basic.h`**: first versions of Clock, Envelope, VCO (DaisySP), VCA, Mix4,
   Constant and Thru.
 - **`patches.h`**: the 200-module reference patch (stubby-music's `spike_rack`).
 - **Tests:** the spec's scenarios, and an allocation guard (operator new is replaced
   in the test binary): 1,000 edited blocks allocate nothing on the render thread.
-  The budget test is 200 modules in under 1.6 ms.
+  The budget test is 200 modules in under 1.6 ms. `test_clock.cpp` covers the master-clock spec scenarios.
 
 Don't build with `-march=native`: combined with `-O3`, it made the engine about twice
 as slow.
