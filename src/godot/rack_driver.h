@@ -1,7 +1,8 @@
 #pragma once
 // RackDriver: the node that keeps the engine running (design D4, D5). RackServer adds
 // one to the scene root on first use. It holds the always-on silent player (the
-// driver playback that renders blocks when nothing is audible), and once per frame,
+// driver playback that renders blocks when nothing is audible) and the UI stem's
+// non-spatial player (bus: audio/stubby_rack/ui_bus), and once per frame,
 // late in the frame, commits the frame's commands and emits engine events. Both run
 // with process_mode ALWAYS, so pausing the game never stops the master clock.
 
