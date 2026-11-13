@@ -40,7 +40,7 @@ Default(library)
 
 # Core tests: a separate environment with no godot-cpp, so the core can't depend on it.
 test_env = Environment(CXXFLAGS=["-std=c++17", "-O2", "-Wall", "-Wextra"], CPPPATH=CORE_INCLUDES + ["thirdparty/doctest"])
-test_objs = [test_env.Object("build/tests/" + os.path.splitext(os.path.basename(str(s)))[0], s) for s in Glob("tests/*.cpp")]
+test_objs = [test_env.Object("build/tests/" + os.path.splitext(os.path.basename(str(s)))[0], s) for s in Glob("tests/*.cpp")]  # includes alloc_guard.cpp (replaces operator new)
 core_objs = [test_env.Object("build/core/" + os.path.splitext(os.path.basename(str(s)))[0], s) for s in core_sources]
 test_bin = test_env.Program("build/tests/stubby_rack_tests", test_objs + core_objs)
 run_tests = test_env.Command("build/tests/.passed", test_bin, "$SOURCE && touch $TARGET")
@@ -48,7 +48,10 @@ AlwaysBuild(run_tests)
 Alias("tests", run_tests)
 
 # Spike benchmarks (no Godot): scons bench
-bench_env = test_env.Clone(CXXFLAGS=["-std=c++17", "-O3", "-march=native", "-Wall"])
+# No -march=native: with -O3 it made the engine 2x slower (the 16-channel port copies;
+# measured 2026-11-13: 0.59 ms vs 1.15 ms per 200-module block). Release builds don't use it.
+bench_env = test_env.Clone(CXXFLAGS=["-std=c++17", "-O3", "-Wall"])
 bench_core = [bench_env.Object("build/bench/core_" + os.path.splitext(os.path.basename(str(s)))[0], s) for s in core_sources]
 bench_bin = bench_env.Program("build/bench/spike_rack_bench", [bench_env.Object("build/bench/spike_rack_bench.o", "bench/spike_rack_bench.cpp")] + bench_core)
-Alias("bench", bench_bin)
+engine_bench_bin = bench_env.Program("build/bench/engine_bench", [bench_env.Object("build/bench/engine_bench.o", "bench/engine_bench.cpp")] + bench_core)
+Alias("bench", [bench_bin, engine_bench_bin])

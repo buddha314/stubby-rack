@@ -7,7 +7,10 @@ inside Godot's own audio mix, as a C++ GDExtension built on godot-cpp. It also o
 the game's **master clock**: one sample counter and transport that time every sound in
 the game.
 
-**Status:** hosting spike done (task group 1 of the spec). The extension loads in
+**Status:** engine core started (task group 3): the per-sample rack, polyphony-ready
+cables, the lock-free command/event boundary and an allocation guard. A 200-module
+patch renders a 512-frame block in about 0.6 ms (5.6%). Earlier, the hosting spike
+(task group 1) was done. The extension loads in
 Godot 4.8. A driver player and per-emitter stem players fan one rendered block out to
 `AudioStreamPlayer3D`s, sample-aligned. A port of stubby-music's 200-module feedback
 rack renders inside `_mix` within budget. Results are in the spec's design.md
@@ -42,6 +45,31 @@ scons bench && ./build/bench/spike_rack_bench
 
 Use a window (not `--headless`) for timing: headless Godot uses the Dummy audio
 driver, which doesn't keep real-time pace.
+
+## Engine core (`src/core`)
+
+- **`Rack`** (audio thread): every module runs once per sample. Outputs are
+  double-buffered `PolyVoltage`s (1 to 16 channels), so every cable is a 1-sample
+  delay, module order never matters, and feedback is legal. Capacities are fixed at
+  construction.
+- **`Engine`**: the boundary.
+  - The main-thread controller validates commands (add/remove module, connect,
+    disconnect, set a parameter, assign a stem) against its own bookkeeping, resolves
+    module IDs to port slots, and rejects bad commands as events naming them.
+  - `commit()` sends a frame's commands as one batch through a CHOC lock-free FIFO.
+  - `render(frames)` (audio thread) applies only complete batches, so a frame's edits
+    land on one sample, then renders and advances the master sample counter.
+  - Removed modules come back through a return FIFO and are deleted on the main thread
+    (`collect()`).
+- **`modules/basic.h`**: first versions of Clock, Envelope, VCO (DaisySP), VCA, Mix4,
+  Constant and Thru.
+- **`patches.h`**: the 200-module reference patch (stubby-music's `spike_rack`).
+- **Tests:** the spec's scenarios, and an allocation guard (operator new is replaced
+  in the test binary): 1,000 edited blocks allocate nothing on the render thread.
+  The budget test is 200 modules in under 1.6 ms.
+
+Don't build with `-march=native`: combined with `-O3`, it made the engine about twice
+as slow.
 
 ## Specification
 
