@@ -7,6 +7,8 @@
 #include <cstdint>
 #include <vector>
 
+#include "core/events.h"
+#include "core/transport.h"
 #include "core/voltage.h"
 
 namespace stubby {
@@ -14,7 +16,10 @@ namespace stubby {
 struct ProcessArgs {
     float sample_rate = 48000.0f;
     float sample_time = 1.0f / 48000.0f;
-    uint64_t frame = 0;  // master-clock sample being rendered
+    uint64_t frame = 0;                    // master-clock sample being rendered
+    const Transport *transport = nullptr;  // the master transport (never null in a rack)
+    EventSink *events = nullptr;           // report ticks with their sample times
+    int handle = -1;                       // this module's handle (for its events)
 };
 
 class Module {

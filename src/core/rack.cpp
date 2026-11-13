@@ -48,31 +48,42 @@ void Rack::set_param(int handle, int param, float value) {
     if (m) m->set_param(param, value);
 }
 
-void Rack::render(int frames, uint64_t first_frame, float sample_rate) {
-    ProcessArgs args;
-    args.sample_rate = sample_rate;
-    args.sample_time = 1.0f / sample_rate;
+void Rack::render(int frames, uint64_t first_frame, const ProcessArgs &base, int stem_offset) {
+    ProcessArgs args = base;
     const int stems = stem_high_;
     for (int i = 0; i < frames; ++i) {
         args.frame = first_frame + static_cast<uint64_t>(i);
         const PolyVoltage *prev = out_[parity_ ^ 1].data();
         PolyVoltage *cur = out_[parity_].data();
         for (int a = 0; a < active_count_; ++a) {
-            const Slot &s = slots_[static_cast<size_t>(active_[static_cast<size_t>(a)])];
+            const int handle = active_[static_cast<size_t>(a)];
+            const Slot &s = slots_[static_cast<size_t>(handle)];
             const int n_in = s.module->num_inputs();
             for (int k = 0; k < n_in; ++k) {
                 const int src = in_src_[static_cast<size_t>(s.in_base + k)];
                 in_ptrs_[static_cast<size_t>(k)] = src < 0 ? &kUnconnected : &prev[src];
             }
+            args.handle = handle;
             s.module->process(args, in_ptrs_.data(), cur + s.out_base);
         }
+        const int at = stem_offset + i;
         for (int st = 0; st < stems; ++st) {
             const int src = stem_src_[static_cast<size_t>(st)];
-            stems_[static_cast<size_t>(st) * cap_.max_block + i] =
-                src < 0 ? 0.0f : volts::sanitize(cur[src].v[0]);
+            stems_[static_cast<size_t>(st) * cap_.max_block + at] = src < 0 ? 0.0f : volts::sanitize(cur[src].v[0]);
         }
         parity_ ^= 1;
     }
+}
+
+float Rack::apply_gain(int emitters, int offset, int frames, float gain, float target, float step) {
+    const int stems = emitters < stem_high_ ? emitters : stem_high_;
+    if (gain == 1.0f && target == 1.0f) return gain;
+    for (int i = 0; i < frames; ++i) {
+        if (gain < target) gain = gain + step < target ? gain + step : target;
+        else if (gain > target) gain = gain - step > target ? gain - step : target;
+        for (int st = 0; st < stems; ++st) stems_[static_cast<size_t>(st) * cap_.max_block + offset + i] *= gain;
+    }
+    return gain;
 }
 
 }  // namespace stubby
