@@ -3,6 +3,7 @@
 #include "core/modules/basic.h"
 #include "core/modules/clocks.h"
 #include "core/modules/sampler.h"
+#include "core/modules/sequencers.h"
 
 namespace stubby {
 
@@ -25,6 +26,12 @@ std::vector<KindInfo> build_kinds() {
     k.push_back({"vca", {"in", "cv"}, {"out"}, {}});
     k.push_back({"gate_vca", {"trig", "in"}, {"out"}, {{"gain", 0.0f, 1.0f, 1.0f, ""}}});
     k.push_back({"mix4", {"in1", "in2", "in3", "in4"}, {"out"}, {}});
+    KindInfo seq{"step_sequencer", {"clock", "reset"}, {"gate", "cv"}, {{"steps", 1.0f, 16.0f, 4.0f, ""}}};
+    for (int i = 1; i <= modules::StepSequencer::kMaxSteps; ++i)
+        seq.params.push_back({"cv_" + std::to_string(i), -10.0f, 10.0f, 0.0f, "V"});
+    for (int i = 1; i <= modules::StepSequencer::kMaxSteps; ++i)
+        seq.params.push_back({"gate_" + std::to_string(i), 0.0f, 1.0f, 0.0f, ""});
+    k.push_back(seq);
     KindInfo sampler{"sampler", {}, {"out"}, {}};
     for (int v = 0; v < modules::SamplerPool::kVoices; ++v) {
         const std::string n = std::to_string(v + 1);
@@ -52,6 +59,7 @@ std::unique_ptr<Module> build(const std::string &kind, const BuildContext &c) {
     if (kind == "vca") return std::make_unique<Vca>();
     if (kind == "gate_vca") return std::make_unique<GateVca>();
     if (kind == "mix4") return std::make_unique<Mix4>();
+    if (kind == "step_sequencer") return std::make_unique<StepSequencer>(4);
     if (kind == "sampler") return std::make_unique<SamplerPool>(c.bank);
     return nullptr;
 }
